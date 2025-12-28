@@ -28,6 +28,18 @@ func (tc *TreeCursor) Node() *Node {
 	return newNode(C.ts_tree_cursor_current_node(&tc._inner))
 }
 
+// UpdateNode updates an existing Node's internal state to the cursor's current position.
+// This avoids allocation by reusing the provided Node, enabling zero-allocation AST traversal.
+// Returns true if the node was updated successfully, false if cursor is at an invalid position.
+func (tc *TreeCursor) UpdateNode(n *Node) bool {
+	inner := C.ts_tree_cursor_current_node(&tc._inner)
+	if inner.id == nil {
+		return false
+	}
+	n._inner = inner
+	return true
+}
+
 // Get the numerical field id of this tree cursor's current node.
 //
 // See also [TreeCursor.FieldName].
