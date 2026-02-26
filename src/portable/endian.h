@@ -18,16 +18,25 @@
 #if defined(HAVE_ENDIAN_H) || \
     defined(__linux__) || \
     defined(__GNU__) || \
+    defined(__HAIKU__) || \
+    defined(__illumos__) || \
+    defined(__redox__) || \
+    defined(__NetBSD__) || \
     defined(__OpenBSD__) || \
     defined(__CYGWIN__) || \
     defined(__MSYS__) || \
-    defined(__EMSCRIPTEN__)
+    defined(__EMSCRIPTEN__) || \
+    defined(__wasi__) || \
+    defined(__wasm__)
+
+#if defined(__NetBSD__)
+#define _NETBSD_SOURCE 1
+#endif
 
 # include <endian.h>
 
 #elif defined(HAVE_SYS_ENDIAN_H) || \
     defined(__FreeBSD__) || \
-    defined(__NetBSD__) || \
     defined(__DragonFly__)
 
 # include <sys/endian.h>

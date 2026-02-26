@@ -549,7 +549,7 @@ func TestParsingAfterDetectingErrorInTheMiddleOfStringToken(t *testing.T) {
 func TestParsingOnMultipleThreads(t *testing.T) {
 	// Parse this source file so that each thread has a non-trivial amount of
 	// work to do.
-	thisFileSource, err := os.ReadFile("tree-sitter/cli/src/tests/parser_test.rs")
+	thisFileSource, err := os.ReadFile("tree-sitter/crates/cli/src/tests/parser_test.rs")
 	assert.Nil(t, err)
 
 	parser := NewParser()

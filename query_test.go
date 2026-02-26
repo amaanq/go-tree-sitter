@@ -235,7 +235,7 @@ func TestQueryErrorsOnInvalidSyntax(t *testing.T) {
 		strings.Join(
 			[]string{
 				`((identifier) (#a)`,
-				`                  ^`,
+				`                 ^`,
 			},
 			"\n",
 		),

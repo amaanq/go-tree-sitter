@@ -719,21 +719,6 @@ func (qc *QueryCursor) SetMatchLimit(limit uint) {
 	C.ts_query_cursor_set_match_limit(qc._inner, C.uint32_t(limit))
 }
 
-// Set the maximum duration in microseconds that query execution should be allowed to
-// take before halting.
-//
-// If query execution takes longer than this, it will halt early, returning None.
-func (qc *QueryCursor) SetTimeoutMicros(timeoutMicros uint64) {
-	C.ts_query_cursor_set_timeout_micros(qc._inner, C.uint64_t(timeoutMicros))
-}
-
-// Get the duration in microseconds that query execution is allowed to take.
-//
-// This is set via [QueryCursor.SetTimeoutMicros]
-func (qc *QueryCursor) TimeoutMicros() uint64 {
-	return uint64(C.ts_query_cursor_timeout_micros(qc._inner))
-}
-
 // Check if, on its last execution, this cursor exceeded its maximum number
 // of in-progress matches.
 func (qc *QueryCursor) DidExceedMatchLimit() bool {

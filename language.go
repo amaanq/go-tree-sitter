@@ -43,14 +43,6 @@ func NewLanguage(ptr unsafe.Pointer) *Language {
 	return &Language{Inner: (*C.TSLanguage)(ptr)}
 }
 
-// Deprecated: Use [Language.AbiVersion] instead.
-//
-// Get the ABI version number that indicates which version of the
-// Tree-sitter CLI that was used to generate this [Language].
-func (l *Language) Version() uint32 {
-	return uint32(C.ts_language_version(l.Inner))
-}
-
 // Get the ABI version number that indicates which version of the
 // Tree-sitter CLI that was used to generate this [Language].
 func (l *Language) AbiVersion() uint32 {
