@@ -17,7 +17,6 @@ import "C"
 import (
 	"context"
 	"os"
-	"sync/atomic"
 	"unsafe"
 
 	"github.com/mattn/go-pointer"
@@ -178,34 +177,20 @@ func (p *Parser) Parse(text []byte, oldTree *Tree) *Tree {
 	}, oldTree, nil)
 }
 
-// Deprecated: Use [Parser.ParseWithOptions] instead, and handle cancellation in the callback, this will be removed in 0.26.
-//
-// Parse a slice of UTF8 text.
-//
-// # Arguments:
-//   - `ctx` The context to parse with.
-//   - `text` The UTF8-encoded text to parse.
-//   - `old_tree` A previous syntax tree parsed from the same document. If the text of the
-//     document has changed since `old_tree` was created, then you must edit `old_tree` to match
-//     the new text using [Tree.Edit].
+// Deprecated: Use [Parser.ParseWithOptions] instead, and handle
+// cancellation in the callback.
 func (p *Parser) ParseCtx(ctx context.Context, text []byte, oldTree *Tree) *Tree {
-	finish := make(chan struct{})
-
-	if ctx.Done() != nil {
-		go func() {
-			select {
-			case <-ctx.Done():
-				atomic.StoreUintptr(p.CancellationFlag(), 1)
-			case <-finish:
-				return
-			}
-		}()
-	}
-
-	tree := p.Parse(text, oldTree)
-	close(finish)
-
-	return tree
+	length := len(text)
+	return p.ParseWithOptions(func(i int, _ Point) []byte {
+		if i < length {
+			return text[i:]
+		}
+		return []byte{}
+	}, oldTree, &ParseOptions{
+		ProgressCallback: func(_ ParseState) bool {
+			return ctx.Err() != nil
+		},
+	})
 }
 
 // Deprecated: Use [Parser.ParseUTF16LE] or [Parser.ParseUTF16BE] instead.
@@ -349,6 +334,7 @@ func (p *Parser) ParseWithOptions(callback func(int, Point) []byte, oldTree *Tre
 			progress_callback: (*[0]byte)(C.parserProgressCallback),
 			payload:           pointer.Save(options),
 		}
+		defer pointer.Unref(cOptions.payload)
 	}
 
 	cNewTree := C.ts_parser_parse_with_options(p._inner, cOldTree, cInput, cOptions)
@@ -476,6 +462,7 @@ func (p *Parser) ParseUTF16LEWithOptions(callback func(int, Point) []uint16, old
 			progress_callback: (*[0]byte)(C.parserProgressCallback),
 			payload:           pointer.Save(options),
 		}
+		defer pointer.Unref(cOptions.payload)
 	}
 
 	cNewTree := C.ts_parser_parse_with_options(p._inner, cOldTree, cInput, cOptions)
@@ -547,6 +534,7 @@ func (p *Parser) ParseUTF16BEWithOptions(callback func(int, Point) []uint16, old
 			progress_callback: (*[0]byte)(C.parserProgressCallback),
 			payload:           pointer.Save(options),
 		}
+		defer pointer.Unref(cOptions.payload)
 	}
 
 	cNewTree := C.ts_parser_parse_with_options(p._inner, cOldTree, cInput, cOptions)
@@ -630,6 +618,7 @@ func (p *Parser) ParseCustomEncoding(
 			progress_callback: (*[0]byte)(C.parserProgressCallback),
 			payload:           pointer.Save(options),
 		}
+		defer pointer.Unref(cOptions.payload)
 	}
 
 	cNewTree := C.ts_parser_parse_with_options(p._inner, cOldTree, cInput, cOptions)
@@ -650,26 +639,6 @@ func (p *Parser) ParseCustomEncoding(
 // other document, you must call `Reset` first.
 func (p *Parser) Reset() {
 	C.ts_parser_reset(p._inner)
-}
-
-// Deprecated: Use [Parser.ParseWithOptions] and pass in a callback instead, this will be removed in 0.26.
-//
-// Get the duration in microseconds that parsing is allowed to take.
-//
-// This is set via [Parser.SetTimeoutMicros].
-func (p *Parser) TimeoutMicros() uint64 {
-	return uint64(C.ts_parser_timeout_micros(p._inner))
-}
-
-// Deprecated: Use [Parser.ParseWithOptions] and pass in a callback instead, this will be removed in 0.26.
-//
-// Set the maximum duration in microseconds that parsing should be allowed
-// to take before halting.
-//
-// If parsing takes longer than this, it will halt early, returning `nil`.
-// See [Parser.Parse] for more information.
-func (p *Parser) SetTimeoutMicros(timeoutMicros uint64) {
-	C.ts_parser_set_timeout_micros(p._inner, C.uint64_t(timeoutMicros))
 }
 
 // Get the ranges of text that the parser will include when parsing.
@@ -734,21 +703,3 @@ func (p *Parser) SetIncludedRanges(ranges []Range) error {
 	return &IncludedRangesError{0}
 }
 
-// Deprecated: Use [Parser.ParseWithOptions] and pass in a callback instead, this will be removed in 0.26.
-//
-// Get the parser's current cancellation flag pointer.
-func (p *Parser) CancellationFlag() *uintptr {
-	return (*uintptr)(unsafe.Pointer(C.ts_parser_cancellation_flag(p._inner)))
-}
-
-// Deprecated: Use [Parser.ParseWithOptions] and pass in a callback instead, this will be removed in 0.26.
-//
-// Set the parser's current cancellation flag pointer.
-//
-// If a pointer is assigned, then the parser will periodically read from
-// this pointer during parsing. If it reads a non-zero value, it will halt
-// early, returning `nil`. See [Parser.Parse] for more
-// information.
-func (p *Parser) SetCancellationFlag(flag *uintptr) {
-	C.ts_parser_set_cancellation_flag(p._inner, (*C.size_t)(unsafe.Pointer(flag)))
-}
