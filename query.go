@@ -10,6 +10,7 @@ import "C"
 
 import (
 	"bytes"
+	"iter"
 	"fmt"
 	"math"
 	"regexp"
@@ -763,6 +764,30 @@ func (qc *QueryCursor) Matches(query *Query, node *Node, text []byte) QueryMatch
 	return qm
 }
 
+// Iterator yielding all of the matches in the order that they were found.
+//
+// Each match contains the index of the pattern that matched, and a list of
+// captures. Because multiple patterns can match the same set of nodes,
+// one match may contain captures that appear *before* some of the
+// captures from a previous match.
+//
+// Each match yielded by the iterator will overwrite the memory at the same location as prior matches, since the memory is reused. You can think of this as a stateful iterator.
+// If you need to keep the data of a prior match without it being overwritten, you should copy what you need before moving on to the next match
+func (qc *QueryCursor) AllMatches(query *Query, node *Node, text []byte) iter.Seq[*QueryMatch] {
+	qm := qc.Matches(query, node, text)
+	return func(yield func(*QueryMatch) bool) {
+		for {
+			c := qm.Next()
+			if c == nil {
+				break
+			}
+			if !yield(c) {
+				return
+			}
+		}
+	}
+}
+
 // This C function is passed to Tree-sitter as the progress callback.
 //
 //export queryProgressCallback
@@ -815,6 +840,29 @@ func (qc *QueryCursor) Captures(query *Query, node *Node, text []byte) QueryCapt
 		text:    text,
 		buffer1: []byte{},
 		buffer2: []byte{},
+	}
+}
+
+// Iterator yielding all of the individual captures in the order that they
+// appear.
+//
+// This is useful if you don't care about which pattern matched, and just
+// want a single, ordered sequence of captures.
+
+// Each capture yielded by the iterator will overwrite the memory at the same location as prior captures, since the memory is reused. You can think of this as a stateful iterator.
+// If you need to keep the data of a prior capture without it being overwritten, you should copy what you need before moving on to the next capture
+func (qc *QueryCursor) AllCaptures(query *Query, node *Node, text []byte) iter.Seq2[*QueryMatch, uint] {
+	qm := qc.Captures(query, node, text)
+	return func(yield func(*QueryMatch, uint) bool) {
+		for {
+			c, i := qm.Next()
+			if c == nil {
+				break
+			}
+			if !yield(c, i) {
+				return
+			}
+		}
 	}
 }
 

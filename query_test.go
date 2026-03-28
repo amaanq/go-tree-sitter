@@ -3881,6 +3881,273 @@ func TestQueryCapturesAndMatchesIteratorsAreFused(t *testing.T) {
 	assert.Nil(t, matches.Next())
 }
 
+func TestAllMatchesBasic(t *testing.T) {
+	language := getLanguage("javascript")
+	query, err := NewQuery(
+		language,
+		`(comment) @comment`,
+	)
+	assert.Nil(t, err)
+	defer query.Close()
+
+	source := []byte(`
+		// one
+		// two
+		// three
+	`)
+
+	parser := NewParser()
+	defer parser.Close()
+	parser.SetLanguage(language)
+
+	tree := parser.Parse(source, nil)
+	defer tree.Close()
+
+	cursor := NewQueryCursor()
+	defer cursor.Close()
+
+	var count int
+	for match := range cursor.AllMatches(query, tree.RootNode(), source) {
+		assert.EqualValues(t, 0, match.PatternIndex)
+		assert.Len(t, match.Captures, 1)
+		assert.EqualValues(t, 0, match.Captures[0].Index)
+		count++
+	}
+	assert.Equal(t, 3, count)
+}
+
+func TestAllMatchesEarlyBreak(t *testing.T) {
+	language := getLanguage("javascript")
+	query, err := NewQuery(
+		language,
+		`(comment) @comment`,
+	)
+	assert.Nil(t, err)
+	defer query.Close()
+
+	source := []byte(`
+		// one
+		// two
+		// three
+	`)
+
+	parser := NewParser()
+	defer parser.Close()
+	parser.SetLanguage(language)
+
+	tree := parser.Parse(source, nil)
+	defer tree.Close()
+
+	cursor := NewQueryCursor()
+	defer cursor.Close()
+
+	var count int
+	for range cursor.AllMatches(query, tree.RootNode(), source) {
+		count++
+		if count == 2 {
+			break
+		}
+	}
+	assert.Equal(t, 2, count)
+}
+
+func TestAllMatchesEmpty(t *testing.T) {
+	language := getLanguage("javascript")
+	query, err := NewQuery(
+		language,
+		`(comment) @comment`,
+	)
+	assert.Nil(t, err)
+	defer query.Close()
+
+	source := []byte(`var x = 1;`)
+
+	parser := NewParser()
+	defer parser.Close()
+	parser.SetLanguage(language)
+
+	tree := parser.Parse(source, nil)
+	defer tree.Close()
+
+	cursor := NewQueryCursor()
+	defer cursor.Close()
+
+	var count int
+	for range cursor.AllMatches(query, tree.RootNode(), source) {
+		count++
+	}
+	assert.Equal(t, 0, count)
+}
+
+func TestAllMatchesMultiplePatterns(t *testing.T) {
+	language := getLanguage("javascript")
+	query, err := NewQuery(
+		language,
+		`
+		(comment) @comment
+		(variable_declarator name: (identifier) @varname)
+		`,
+	)
+	assert.Nil(t, err)
+	defer query.Close()
+
+	source := []byte(`
+		// a comment
+		var x = 1;
+	`)
+
+	parser := NewParser()
+	defer parser.Close()
+	parser.SetLanguage(language)
+
+	tree := parser.Parse(source, nil)
+	defer tree.Close()
+
+	cursor := NewQueryCursor()
+	defer cursor.Close()
+
+	patternsSeen := make(map[uint]int)
+	for match := range cursor.AllMatches(query, tree.RootNode(), source) {
+		patternsSeen[match.PatternIndex]++
+	}
+	assert.Equal(t, 1, patternsSeen[0], "expected 1 comment match")
+	assert.Equal(t, 1, patternsSeen[1], "expected 1 variable declarator match")
+}
+
+func TestAllCapturesBasic(t *testing.T) {
+	language := getLanguage("javascript")
+	query, err := NewQuery(
+		language,
+		`(comment) @comment`,
+	)
+	assert.Nil(t, err)
+	defer query.Close()
+
+	source := []byte(`
+		// one
+		// two
+		// three
+	`)
+
+	parser := NewParser()
+	defer parser.Close()
+	parser.SetLanguage(language)
+
+	tree := parser.Parse(source, nil)
+	defer tree.Close()
+
+	cursor := NewQueryCursor()
+	defer cursor.Close()
+
+	var matches []*QueryMatch
+	var indices []uint
+	for match, idx := range cursor.AllCaptures(query, tree.RootNode(), source) {
+		matches = append(matches, match)
+		indices = append(indices, idx)
+	}
+
+	assert.Len(t, matches, 3)
+	assert.EqualValues(t, []uint{0, 0, 0}, indices)
+}
+
+func TestAllCapturesEarlyBreak(t *testing.T) {
+	language := getLanguage("javascript")
+	query, err := NewQuery(
+		language,
+		`(comment) @comment`,
+	)
+	assert.Nil(t, err)
+	defer query.Close()
+
+	source := []byte(`
+		// one
+		// two
+		// three
+	`)
+
+	parser := NewParser()
+	defer parser.Close()
+	parser.SetLanguage(language)
+
+	tree := parser.Parse(source, nil)
+	defer tree.Close()
+
+	cursor := NewQueryCursor()
+	defer cursor.Close()
+
+	var count int
+	for range cursor.AllCaptures(query, tree.RootNode(), source) {
+		count++
+		if count == 1 {
+			break
+		}
+	}
+	assert.Equal(t, 1, count)
+}
+
+func TestAllCapturesEmpty(t *testing.T) {
+	language := getLanguage("javascript")
+	query, err := NewQuery(
+		language,
+		`(comment) @comment`,
+	)
+	assert.Nil(t, err)
+	defer query.Close()
+
+	source := []byte(`var x = 1;`)
+
+	parser := NewParser()
+	defer parser.Close()
+	parser.SetLanguage(language)
+
+	tree := parser.Parse(source, nil)
+	defer tree.Close()
+
+	cursor := NewQueryCursor()
+	defer cursor.Close()
+
+	var count int
+	for range cursor.AllCaptures(query, tree.RootNode(), source) {
+		count++
+	}
+	assert.Equal(t, 0, count)
+}
+
+func TestAllCapturesMultiplePatterns(t *testing.T) {
+	language := getLanguage("javascript")
+	query, err := NewQuery(
+		language,
+		`
+		(comment) @comment
+		(variable_declarator name: (identifier) @varname)
+		`,
+	)
+	assert.Nil(t, err)
+	defer query.Close()
+
+	source := []byte(`
+		// a comment
+		var x = 1;
+	`)
+
+	parser := NewParser()
+	defer parser.Close()
+	parser.SetLanguage(language)
+
+	tree := parser.Parse(source, nil)
+	defer tree.Close()
+
+	cursor := NewQueryCursor()
+	defer cursor.Close()
+
+	var indices []uint
+	for _, idx := range cursor.AllCaptures(query, tree.RootNode(), source) {
+		indices = append(indices, idx)
+	}
+	assert.Len(t, indices, 2)
+	assert.Contains(t, indices, uint(0))
+}
+
 func TestQueryStartEndByteForPattern(t *testing.T) {
 	language := getLanguage("javascript")
 
