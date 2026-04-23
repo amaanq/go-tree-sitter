@@ -108,14 +108,14 @@ type QueryMatch struct {
 type QueryMatches struct {
 	_inner *C.TSQueryCursor
 	query  *Query
-	text   []byte
+	Text   []byte
 }
 
 // A sequence of [QueryCapture]s associated with a given [QueryCursor].
 type QueryCaptures struct {
 	_inner  *C.TSQueryCursor
 	query   *Query
-	text    []byte
+	Text    []byte
 	buffer1 []byte
 	buffer2 []byte
 }
@@ -751,7 +751,7 @@ func (qc *QueryCursor) Matches(query *Query, node *Node, text []byte) QueryMatch
 	qm := QueryMatches{
 		_inner: qc._inner,
 		query:  query,
-		text:   text,
+		Text:   text,
 	}
 	if qm._inner != qc._inner {
 		panic("inner pointers of `QueryCursor` and `QueryMatches` are not equal")
@@ -790,7 +790,7 @@ func (qc *QueryCursor) MatchesWithOptions(query *Query, node *Node, text []byte,
 	qm := QueryMatches{
 		_inner: qc._inner,
 		query:  query,
-		text:   text,
+		Text:   text,
 	}
 	if qm._inner != qc._inner {
 		panic("inner pointers of `QueryCursor` and `QueryMatches` are not equal")
@@ -812,7 +812,7 @@ func (qc *QueryCursor) Captures(query *Query, node *Node, text []byte) QueryCapt
 	return QueryCaptures{
 		_inner:  qc._inner,
 		query:   query,
-		text:    text,
+		Text:    text,
 		buffer1: []byte{},
 		buffer2: []byte{},
 	}
@@ -1020,7 +1020,7 @@ func (qm *QueryMatches) Next() *QueryMatch {
 			result := newQueryMatch(m, qm._inner)
 			if result.satisfiesTextPredicate(
 				qm.query,
-				qm.text,
+				qm.Text,
 			) {
 				return &result
 			}
@@ -1044,7 +1044,7 @@ func (qc *QueryCaptures) Next() (*QueryMatch, uint) {
 			result := newQueryMatch(m, qc._inner)
 			if result.satisfiesTextPredicate(
 				qc.query,
-				qc.text,
+				qc.Text,
 			) {
 				return &result, uint(captureIndex)
 			}
