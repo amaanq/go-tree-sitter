@@ -345,9 +345,11 @@ func (p *Parser) ParseWithOptions(callback func(int, Point) []byte, oldTree *Tre
 
 	var cOptions C.TSParseOptions
 	if options != nil {
+		optionsPtr := pointer.Save(options)
+		defer pointer.Unref(optionsPtr)
 		cOptions = C.TSParseOptions{
 			progress_callback: (*[0]byte)(C.parserProgressCallback),
-			payload:           pointer.Save(options),
+			payload:           optionsPtr,
 		}
 	}
 
@@ -472,9 +474,11 @@ func (p *Parser) ParseUTF16LEWithOptions(callback func(int, Point) []uint16, old
 
 	var cOptions C.TSParseOptions
 	if options != nil {
+		optionsPtr := pointer.Save(options)
+		defer pointer.Unref(optionsPtr)
 		cOptions = C.TSParseOptions{
 			progress_callback: (*[0]byte)(C.parserProgressCallback),
-			payload:           pointer.Save(options),
+			payload:           optionsPtr,
 		}
 	}
 
@@ -543,9 +547,11 @@ func (p *Parser) ParseUTF16BEWithOptions(callback func(int, Point) []uint16, old
 
 	var cOptions C.TSParseOptions
 	if options != nil {
+		optionsPtr := pointer.Save(options)
+		defer pointer.Unref(optionsPtr)
 		cOptions = C.TSParseOptions{
 			progress_callback: (*[0]byte)(C.parserProgressCallback),
-			payload:           pointer.Save(options),
+			payload:           optionsPtr,
 		}
 	}
 
@@ -626,9 +632,11 @@ func (p *Parser) ParseCustomEncoding(
 
 	var cOptions C.TSParseOptions
 	if options != nil {
+		optionsPtr := pointer.Save(options)
+		defer pointer.Unref(optionsPtr)
 		cOptions = C.TSParseOptions{
 			progress_callback: (*[0]byte)(C.parserProgressCallback),
-			payload:           pointer.Save(options),
+			payload:           optionsPtr,
 		}
 	}
 
