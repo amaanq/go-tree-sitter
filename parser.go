@@ -17,6 +17,7 @@ import "C"
 import (
 	"context"
 	"os"
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 
@@ -352,6 +353,56 @@ func (p *Parser) ParseWithOptions(callback func(int, Point) []byte, oldTree *Tre
 	}
 
 	cNewTree := C.ts_parser_parse_with_options(p._inner, cOldTree, cInput, cOptions)
+
+	if cNewTree != nil {
+		return newTree(cNewTree)
+	}
+
+	return nil
+}
+
+// ParseBuffer parses a contiguous UTF-8 buffer, handing Tree-sitter the caller's bytes
+// directly via ts_parser_parse_string.
+//
+// It is the zero-copy counterpart to [Parser.Parse], which reaches the same C parser through
+// the chunked TSInput callback path: that route calls back into Go once per chunk, and each
+// callback allocates a Go string copy of the remaining text and then a second C copy of it
+// (see readUTF8), retaining every such copy until the parse completes. For a caller that
+// already holds the whole document in one slice — the common case — none of that is needed,
+// and the copies dominate the allocation profile of a parse-heavy workload.
+//
+// The trade-off against Parse is the chunked API's actual purpose: this cannot parse a
+// document the caller does not have contiguously in memory, and it takes no ParseOptions, so
+// it supports neither a progress callback nor cancellation. Use ParseWithOptions when you
+// need any of those.
+//
+// The buffer is read only for the duration of the call. Tree-sitter records byte offsets
+// rather than retaining the text, so the returned Tree holds no reference to text and the
+// caller may reuse or free it as soon as this returns; runtime.KeepAlive pins it for the
+// call itself. Passing a slice whose backing array is later mutated does not corrupt the
+// tree, but the tree's offsets will no longer describe the buffer's contents.
+//
+// Returns nil under the same conditions as Parse: no language set, or a parse that was
+// halted.
+func (p *Parser) ParseBuffer(text []byte, oldTree *Tree) *Tree {
+	var cOldTree *C.TSTree
+	if oldTree != nil {
+		cOldTree = oldTree._inner
+	}
+
+	// A nil data pointer with a zero length is what Tree-sitter expects for empty input;
+	// indexing text[0] to obtain the pointer would panic on an empty slice.
+	var cText *C.char
+	if len(text) > 0 {
+		cText = (*C.char)(unsafe.Pointer(&text[0]))
+	}
+
+	cNewTree := C.ts_parser_parse_string(p._inner, cOldTree, cText, C.uint32_t(len(text)))
+
+	// The C call above receives an interior pointer into a Go allocation, so the slice has
+	// to stay reachable until the call returns. Passing a Go pointer to C is permitted
+	// precisely because Tree-sitter does not retain it past the call.
+	runtime.KeepAlive(text)
 
 	if cNewTree != nil {
 		return newTree(cNewTree)
