@@ -2,9 +2,24 @@ package tree_sitter
 
 /*
 #cgo CFLAGS: -Iinclude -Isrc -std=c11 -D_POSIX_C_SOURCE=200112L -D_DEFAULT_SOURCE
+#include <stdlib.h>
 #include <tree_sitter/api.h>
 
 extern bool queryProgressCallback(TSQueryCursorState *state);
+
+// The options struct handed to ts_query_cursor_exec_with_options outlives that call — the cursor
+// keeps the pointer and reads it on every advance — so it cannot live in Go memory. These are
+// static wrappers rather than direct C.calloc / C.free calls because referencing the dynamic
+// malloc/free symbols from Go fails to link on darwin ("unexpected reloc for dynamic symbol
+// free"). They deliberately do not go through the configurable allocator in allocator.c: that
+// one calls back into Go, and this allocation exists precisely to be outside Go's heap.
+static TSQueryCursorOptions *tsQueryCursorOptionsNew(void) {
+	return (TSQueryCursorOptions *)calloc(1, sizeof(TSQueryCursorOptions));
+}
+
+static void tsQueryCursorOptionsFree(TSQueryCursorOptions *options) {
+	free(options);
+}
 */
 import "C"
 
@@ -59,6 +74,39 @@ func newCaptureQuantifier(raw C.TSQuantifier) CaptureQuantifier {
 // A stateful object for executing a [Query] on a syntax [Tree].
 type QueryCursor struct {
 	_inner *C.TSQueryCursor
+
+	// options is the TSQueryCursorOptions most recently handed to
+	// ts_query_cursor_exec_with_options, and optionsPayload is the go-pointer handle carrying
+	// the Go callback inside it.
+	//
+	// Both have to outlive the exec call that installs them. ts_query_cursor_exec_with_options
+	// stores the options pointer on the C cursor and dereferences it on every subsequent
+	// advance, so the struct cannot be Go-allocated (the collector would be free to reclaim
+	// memory C still reads) and the payload handle cannot be unref'd when the call returns.
+	// They are retained here instead, and released on the next exec or on Close.
+	options        *C.TSQueryCursorOptions
+	optionsPayload unsafe.Pointer
+}
+
+// releaseOptions frees the options installed by a previous [QueryCursor.MatchesWithOptions].
+//
+// Called before every exec and from Close, which together cover the lifetime C cares about:
+// ts_query_cursor_exec clears the cursor's query_options pointer, so by the time this runs C
+// has either been given a replacement or has stopped referring to the old one. A cursor is not
+// safe for concurrent use, so there is no window where C could be mid-advance against memory
+// this frees.
+//
+// Idempotent, so it is safe to call when nothing is outstanding.
+func (qc *QueryCursor) releaseOptions() {
+	if qc.optionsPayload != nil {
+		pointer.Unref(qc.optionsPayload)
+		qc.optionsPayload = nil
+	}
+
+	if qc.options != nil {
+		C.tsQueryCursorOptionsFree(qc.options)
+		qc.options = nil
+	}
 }
 
 // A stateful object that is passed into the progress callback [QueryOptions.ProgressCallback].
@@ -705,6 +753,7 @@ func NewQueryCursor() *QueryCursor {
 
 // Delete the underlying memory for a query cursor.
 func (qc *QueryCursor) Close() {
+	qc.releaseOptions()
 	C.ts_query_cursor_delete(qc._inner)
 }
 
@@ -747,6 +796,10 @@ func (qc *QueryCursor) DidExceedMatchLimit() bool {
 // one match may contain captures that appear *before* some of the
 // captures from a previous match.
 func (qc *QueryCursor) Matches(query *Query, node *Node, text []byte) QueryMatches {
+	// ts_query_cursor_exec clears the cursor's options, so anything a previous
+	// MatchesWithOptions installed is unreachable from C after this call and can go now.
+	qc.releaseOptions()
+
 	C.ts_query_cursor_exec(qc._inner, query._inner, node._inner)
 	qm := QueryMatches{
 		_inner: qc._inner,
@@ -780,10 +833,16 @@ func queryProgressCallback(state *C.TSQueryCursorState) C.bool {
 // one match may contain captures that appear *before* some of the
 // captures from a previous match.
 func (qc *QueryCursor) MatchesWithOptions(query *Query, node *Node, text []byte, options QueryCursorOptions) QueryMatches {
-	cOptions := &C.TSQueryCursorOptions{
-		payload:           pointer.Save(&options),
-		progress_callback: (*[0]byte)(C.queryProgressCallback),
-	}
+	qc.releaseOptions()
+
+	// C-allocated, not &C.TSQueryCursorOptions{...}: the cursor keeps this pointer and reads it
+	// on every advance, long after this function returns. See QueryCursor.options.
+	cOptions := C.tsQueryCursorOptionsNew()
+	cOptions.payload = pointer.Save(&options)
+	cOptions.progress_callback = (*[0]byte)(C.queryProgressCallback)
+
+	qc.options = cOptions
+	qc.optionsPayload = cOptions.payload
 
 	C.ts_query_cursor_exec_with_options(qc._inner, query._inner, node._inner, cOptions)
 
@@ -808,6 +867,9 @@ func (qc *QueryCursor) MatchesWithOptions(query *Query, node *Node, text []byte,
 // This is useful if you don't care about which pattern matched, and just
 // want a single, ordered sequence of captures.
 func (qc *QueryCursor) Captures(query *Query, node *Node, text []byte) QueryCaptures {
+	// See Matches: exec clears the cursor's options, so a previous install can be freed here.
+	qc.releaseOptions()
+
 	C.ts_query_cursor_exec(qc._inner, query._inner, node._inner)
 	return QueryCaptures{
 		_inner:  qc._inner,
